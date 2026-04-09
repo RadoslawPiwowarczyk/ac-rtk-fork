@@ -38,7 +38,12 @@ fn sanitize_slug(slug: &str) -> String {
 fn get_tee_dir(config: &Config) -> Option<PathBuf> {
     // Env var override
     if let Ok(dir) = std::env::var("RTK_TEE_DIR") {
-        return Some(PathBuf::from(dir));
+        let path = PathBuf::from(&dir);
+        if path.is_relative() {
+            eprintln!("[rtk] RTK_TEE_DIR must be an absolute path, ignoring: {}", dir);
+        } else {
+            return Some(path);
+        }
     }
 
     // Config override
@@ -246,7 +251,7 @@ pub struct TeeConfig {
 impl Default for TeeConfig {
     fn default() -> Self {
         Self {
-            enabled: true,
+            enabled: false,  // ACOUSTIC-005: disabled by default
             mode: TeeMode::default(),
             max_files: DEFAULT_MAX_FILES,
             max_file_size: DEFAULT_MAX_FILE_SIZE,
@@ -308,7 +313,10 @@ mod tests {
 
     #[test]
     fn test_should_tee_proceed_on_failure() {
-        let config = TeeConfig::default(); // mode = Failures
+        let config = TeeConfig {
+            enabled: true,
+            ..TeeConfig::default()
+        };
         let dir = PathBuf::from("/tmp/tee");
         assert!(should_tee(&config, 1000, 1, Some(dir)).is_some());
     }
@@ -316,6 +324,7 @@ mod tests {
     #[test]
     fn test_should_tee_always_mode_success() {
         let config = TeeConfig {
+            enabled: true,
             mode: TeeMode::Always,
             ..TeeConfig::default()
         };
@@ -396,7 +405,7 @@ mod tests {
     #[test]
     fn test_tee_config_default() {
         let config = TeeConfig::default();
-        assert!(config.enabled);
+        assert!(!config.enabled);  // ACOUSTIC-005: default is now false
         assert_eq!(config.mode, TeeMode::Failures);
         assert_eq!(config.max_files, 20);
         assert_eq!(config.max_file_size, 1_048_576);
