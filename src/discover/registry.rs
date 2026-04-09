@@ -346,6 +346,20 @@ pub fn rewrite_command(cmd: &str, excluded: &[String]) -> Option<String> {
         return None;
     }
 
+    // ACOUSTIC-006: Never rewrite sensitive commands
+    let first_word = trimmed.split_whitespace().next().unwrap_or("");
+    const ACOUSTIC_EXCLUDE: &[&str] = &["env", "curl", "wget", "ssh"];
+    if ACOUSTIC_EXCLUDE.contains(&first_word) {
+        return None;
+    }
+    // Also block kubectl exec specifically (not all kubectl)
+    if first_word == "kubectl" {
+        let second = trimmed.split_whitespace().nth(1).unwrap_or("");
+        if second == "exec" {
+            return None;
+        }
+    }
+
     // Heredoc or arithmetic expansion — unsafe to split/rewrite
     if trimmed.contains("<<") || trimmed.contains("$((") {
         return None;
@@ -2117,7 +2131,8 @@ mod tests {
     #[test]
     fn test_rewrite_empty_excludes_rewrites_curl() {
         let excluded: Vec<String> = vec![];
-        assert!(rewrite_command("curl https://api.example.com", &excluded).is_some());
+        // ACOUSTIC-006: curl is hardcoded as excluded — verify it's blocked
+        assert!(rewrite_command("curl https://api.example.com", &excluded).is_none());
     }
 
     #[test]
