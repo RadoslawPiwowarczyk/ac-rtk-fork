@@ -62,6 +62,7 @@ fn project_filter_params(project_path: Option<&str>) -> (Option<String>, Option<
 }
 
 use super::constants::{DEFAULT_HISTORY_DAYS, HISTORY_DB, RTK_DATA_DIR};
+use super::scrub;
 
 /// Main tracking interface for recording and querying command history.
 ///
@@ -370,8 +371,8 @@ impl Tracker {
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)", // added: project_path
             params![
                 Utc::now().to_rfc3339(),
-                original_cmd,
-                rtk_cmd,
+                scrub::scrub_command(original_cmd),
+                scrub::scrub_command(rtk_cmd),
                 project_path, // added
                 input_tokens as i64,
                 output_tokens as i64,
@@ -410,7 +411,7 @@ impl Tracker {
              VALUES (?1, ?2, ?3, ?4)",
             params![
                 Utc::now().to_rfc3339(),
-                raw_command,
+                scrub::scrub_command(raw_command),
                 error_message,
                 fallback_succeeded as i32,
             ],
