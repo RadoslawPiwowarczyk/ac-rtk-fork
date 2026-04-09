@@ -7,7 +7,7 @@
 //! # Architecture
 //!
 //! - Storage: SQLite database (~/.local/share/rtk/tracking.db)
-//! - Retention: 90-day automatic cleanup
+//! - Retention: 7-day automatic cleanup (ACOUSTIC-004)
 //! - Metrics: Input/output tokens, savings %, execution time
 //!
 //! # Quick Start
@@ -29,7 +29,7 @@
 //!
 //! See [docs/tracking.md](../docs/tracking.md) for full documentation.
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use rusqlite::{params, Connection};
 use serde::Serialize;
@@ -254,6 +254,16 @@ impl Tracker {
         }
 
         let conn = Connection::open(&db_path)?;
+
+        // ACOUSTIC-004: Enforce 600 permissions on history DB (owner read/write only).
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&db_path, perms)
+                .context("Failed to set 600 permissions on tracking database")?;
+        }
+
         // WAL mode + busy_timeout for concurrent access (multiple Claude Code instances).
         // Non-fatal: NFS/read-only filesystems may not support WAL.
         let _ = conn.execute_batch(
@@ -330,7 +340,7 @@ impl Tracker {
     /// Record a command execution with token counts and timing.
     ///
     /// Calculates savings metrics and stores the record in the database.
-    /// Automatically cleans up records older than 90 days after insertion.
+    /// Automatically cleans up records older than 7 days after insertion (ACOUSTIC-004).
     ///
     /// # Arguments
     ///
