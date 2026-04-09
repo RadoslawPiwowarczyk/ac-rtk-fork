@@ -1449,13 +1449,11 @@ fn run_cli() -> Result<i32> {
         },
 
         Commands::Err { command } => {
-            let cmd = command.join(" ");
-            runner::run_err(&cmd, cli.verbose)?
+            runner::run_err(&command, cli.verbose)?
         }
 
         Commands::Test { command } => {
-            let cmd = command.join(" ");
-            runner::run_test(&cmd, cli.verbose)?
+            runner::run_test(&command, cli.verbose)?
         }
 
         Commands::Json {
@@ -1570,8 +1568,7 @@ fn run_cli() -> Result<i32> {
         },
 
         Commands::Summary { command } => {
-            let cmd = command.join(" ");
-            summary::run(&cmd, cli.verbose)?
+            summary::run(&command, cli.verbose)?
         }
 
         Commands::Grep {

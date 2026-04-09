@@ -1,32 +1,36 @@
 //! Runs arbitrary commands and captures only stderr or test failures.
+//! ACOUSTIC-002: Uses direct execution (no shell) to prevent injection.
 
+use crate::core::sanitize;
 use crate::core::tracking;
 use anyhow::{Context, Result};
 use regex::Regex;
 use std::process::{Command, Stdio};
 
-/// Run a command and filter output to show only errors/warnings
-pub fn run_err(command: &str, verbose: u8) -> Result<i32> {
+/// Run a command and filter output to show only errors/warnings.
+/// Takes args as a slice — no shell involved.
+pub fn run_err(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
+    let display_cmd = args.join(" ");
 
     if verbose > 0 {
-        eprintln!("Running: {}", command);
+        eprintln!("Running: {}", display_cmd);
     }
 
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", command])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-    } else {
-        Command::new("sh")
-            .args(["-c", command])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+    // ACOUSTIC-002: Validate no shell metacharacters
+    if let Err(msg) = sanitize::validate_args(args) {
+        eprintln!("[rtk err] {}", msg);
+        return Ok(1);
     }
-    .context("Failed to execute command")?;
+
+    let (bin, rest) = args.split_first().unwrap(); // safe: validate_args checks non-empty
+
+    let output = Command::new(bin)
+        .args(rest)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("Failed to execute: {}", bin))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -57,47 +61,51 @@ pub fn run_err(command: &str, verbose: u8) -> Result<i32> {
     } else {
         println!("{}", rtk);
     }
-    timer.track(command, "rtk run-err", &raw, &rtk);
+    timer.track(&display_cmd, "rtk run-err", &raw, &rtk);
     Ok(exit_code)
 }
 
-/// Run tests and show only failures
-pub fn run_test(command: &str, verbose: u8) -> Result<i32> {
+/// Run tests and show only failures.
+/// Takes args as a slice — no shell involved.
+pub fn run_test(args: &[String], verbose: u8) -> Result<i32> {
     let timer = tracking::TimedExecution::start();
+    let display_cmd = args.join(" ");
 
     if verbose > 0 {
-        eprintln!("Running tests: {}", command);
+        eprintln!("Running tests: {}", display_cmd);
     }
 
-    let output = if cfg!(target_os = "windows") {
-        Command::new("cmd")
-            .args(["/C", command])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
-    } else {
-        Command::new("sh")
-            .args(["-c", command])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .output()
+    // ACOUSTIC-002: Validate no shell metacharacters
+    if let Err(msg) = sanitize::validate_args(args) {
+        eprintln!("[rtk test] {}", msg);
+        return Ok(1);
     }
-    .context("Failed to execute test command")?;
+
+    let (bin, rest) = args.split_first().unwrap(); // safe: validate_args checks non-empty
+
+    let output = Command::new(bin)
+        .args(rest)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("Failed to execute: {}", bin))?;
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
     let raw = format!("{}\n{}", stdout, stderr);
 
     let exit_code = crate::core::utils::exit_code_from_output(&output, "test");
-    let summary = extract_test_summary(&raw, command);
+    let summary = extract_test_summary(&raw, &display_cmd);
     if let Some(hint) = crate::core::tee::tee_and_hint(&raw, "test", exit_code) {
         println!("{}\n{}", summary, hint);
     } else {
         println!("{}", summary);
     }
-    timer.track(command, "rtk run-test", &raw, &summary);
+    timer.track(&display_cmd, "rtk run-test", &raw, &summary);
     Ok(exit_code)
 }
+
+// --- Everything below here is UNCHANGED from upstream ---
 
 fn filter_errors(output: &str) -> String {
     lazy_static::lazy_static! {
@@ -144,7 +152,6 @@ fn filter_errors(output: &str) -> String {
                     result.push(line.to_string());
                 }
             } else if line.starts_with(' ') || line.starts_with('\t') {
-                // Continuation of error
                 result.push(line.to_string());
                 blank_count = 0;
             } else {
@@ -160,20 +167,17 @@ fn extract_test_summary(output: &str, command: &str) -> String {
     let mut result = Vec::new();
     let lines: Vec<&str> = output.lines().collect();
 
-    // Detect test framework
     let is_cargo = command.contains("cargo test");
     let is_pytest = command.contains("pytest");
     let is_jest =
         command.contains("jest") || command.contains("npm test") || command.contains("yarn test");
     let is_go = command.contains("go test");
 
-    // Collect failures
     let mut failures = Vec::new();
     let mut in_failure = false;
     let mut failure_lines = Vec::new();
 
     for line in lines.iter() {
-        // Cargo test
         if is_cargo {
             if line.contains("test result:") {
                 result.push(line.to_string());
@@ -189,7 +193,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             }
         }
 
-        // Pytest
         if is_pytest {
             if line.contains(" passed") || line.contains(" failed") || line.contains(" error") {
                 result.push(line.to_string());
@@ -199,7 +202,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             }
         }
 
-        // Jest
         if is_jest {
             if line.contains("Tests:") || line.contains("Test Suites:") {
                 result.push(line.to_string());
@@ -209,7 +211,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             }
         }
 
-        // Go test
         if is_go {
             if line.starts_with("ok") || line.starts_with("FAIL") || line.starts_with("---") {
                 result.push(line.to_string());
@@ -220,7 +221,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
         }
     }
 
-    // Build output
     let mut output = String::new();
 
     if !failures.is_empty() {
@@ -240,7 +240,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             output.push_str(&format!("  {}\n", r));
         }
     } else {
-        // Fallback: show last few lines
         output.push_str("OUTPUT (last 5 lines):\n");
         let start = lines.len().saturating_sub(5);
         for line in &lines[start..] {

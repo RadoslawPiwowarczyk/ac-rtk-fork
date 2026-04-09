@@ -10,3 +10,4 @@ pub mod telemetry;
 pub mod toml_filter;
 pub mod tracking;
 pub mod utils;
+pub mod sanitize;
