@@ -14,6 +14,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-006 | Exclude sensitive commands from hook rewriting | `src/discover/registry.rs` | — |
 | ACOUSTIC-007 | Extend rewrite registry for Node.js/pnpm stack | `src/discover/rules.rs` | — |
 | ACOUSTIC-008 | Add yarn, NestJS, Gradle wrappers, extend Maven | `src/discover/rules.rs` | — |
+| ACOUSTIC-010 | Fix `rtk read` default filter: `none` → `minimal` | `src/main.rs` | — |
 
 ## Patch Details
 
@@ -77,6 +78,25 @@ Acoustic projects span multiple ecosystems: React (yarn), NestJS (nest CLI), Jav
 
 **Note**: `rtk gradle` and `rtk mvn` are transparent proxies (no dedicated filter module). Commands execute correctly and token usage is tracked, but output is not yet compressed. Future filter modules can add compression without changing rules.
 
+### ACOUSTIC-010: Fix `rtk read` Default Filter Level
+
+Upstream RTK v0.35.0 ships with the `--level` Clap argument defaulting to `"none"` instead of `"minimal"` as documented. This means every `rtk read` invocation — including all hook-rewritten `cat` calls — applies zero filtering, producing byte-identical output to raw `cat`.
+
+**What we changed**: In `src/main.rs`, the `Commands::Read` Clap definition's `default_value` for the `--level` arg changed from `"none"` to `"minimal"`.
+
+**Impact measured on Acoustic codebase**:
+- 181KB legacy Java file (TLEventProcessor.java): 0% → **22% reduction** (181K → 141K bytes)
+- Clean TypeScript files (valkey-consumer.service.ts): 0% → **5.2% reduction** (comments/blanks stripped)
+- Session-level `rtk gain`: **5.5% → 41.8% efficiency** — `rtk read` became the #1 token saver (161K tokens across 27 reads)
+
+**What minimal filtering strips**: single-line comments (`//`, `#`), block comments (`/* */`), and blank lines. All code logic, imports, type signatures, and string literals are preserved. Claude retains full ability to read and edit files.
+
+**Known upstream issues** (not fixed here, noted for reference):
+- `minimal` does not strip Javadoc (`/** */`) blocks — explains why Java savings are 22% not 40-60%
+- `aggressive` filter produces empty output on small files, triggering fallback to raw passthrough
+
+**Verification**: `rtk read <file> -v` now shows `(filter: minimal)` instead of `(filter: none)`.
+
 ## Updating from Upstream
 
 ```bash
@@ -97,6 +117,7 @@ git log upstream/master --oneline -20  # Review what changed
 | `src/core/tee.rs` | LOW | Default changed back to enabled? |
 | `src/discover/registry.rs` | LOW | Our ACOUSTIC_EXCLUDE block removed? |
 | `src/discover/rules.rs` | LOW | Our added prefixes removed? New rules conflict with our additions? |
+| `src/main.rs` | MEDIUM | `Commands::Read` level default changed back to `"none"`? |
 | `Cargo.toml` | MEDIUM | `ureq` or new HTTP client added? New suspicious deps? |
 
 **Merge strategy**: Cherry-pick specific commits rather than merging master. Review each commit's diff against the files listed above.
@@ -115,3 +136,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Registry extensions | Prefix additions in rules.rs | No new patterns — just added missing prefixes for commands RTK already has filters for (jest→vitest, pnpm→npm) |
 | Yarn/Nest merge | Single npm rule with combined pattern | Multiple rules sharing same `rtk_cmd` causes lookup collision — must be one rule |
 | Gradle/Maven wrappers | Prefix-only (no filter module) | Transparent proxy with tracking is still valuable; filter can be added later |
+| Read filter default | `minimal` (was `none`) | Upstream bug: docs say minimal, binary ships none. 41.8% efficiency gain with zero functional impact on Claude's ability to read/edit code |

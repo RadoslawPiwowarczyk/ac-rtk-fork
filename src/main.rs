@@ -88,7 +88,7 @@ enum Commands {
         #[arg(required = true, num_args = 1..)]
         files: Vec<PathBuf>,
         /// Filter: none (default, full content), minimal, aggressive
-        #[arg(short, long, default_value = "none")]
+        #[arg(short, long, default_value = "minimal")]
         level: core::filter::FilterLevel,
         /// Max lines
         #[arg(short, long, conflicts_with = "tail_lines")]
