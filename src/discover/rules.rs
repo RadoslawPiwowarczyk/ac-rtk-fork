@@ -151,9 +151,10 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     RtkRule {
-        pattern: r"^(pnpm\s+|npx\s+)?(vitest|jest|test)(\s|$)",
+        pattern: r"^(pnpm\s+|npx\s+)?vitest(\s|$)",
         rtk_cmd: "rtk vitest",
-        rewrite_prefixes: &["pnpm vitest", "npx vitest", "npx jest", "pnpm jest", "pnpm test", "vitest", "jest"],        category: "Tests",
+        rewrite_prefixes: &["pnpm vitest", "npx vitest", "vitest"],
+        category: "Tests",
         savings_pct: 99.0,
         subcmd_savings: &[],
         subcmd_status: &[],
