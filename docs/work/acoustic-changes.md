@@ -12,6 +12,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-004 | Argument scrubbing in tracking DB, retention reduced to 7d | `src/core/tracking.rs`, `src/core/constants.rs` | `src/core/scrub.rs` |
 | ACOUSTIC-005 | Disable tee by default, validate RTK_TEE_DIR path | `src/core/tee.rs` | — |
 | ACOUSTIC-006 | Exclude sensitive commands from hook rewriting | `src/discover/registry.rs` | — |
+| ACOUSTIC-007 | Extend rewrite registry for Node.js/pnpm stack | `src/discover/rules.rs` | — |
 
 ## Patch Details
 
@@ -53,6 +54,17 @@ RTK's tee feature saves full unfiltered output on failure. Disabled by default (
 
 Commands that inherently handle sensitive data are excluded from rewriting: `env`, `curl`, `wget`, `ssh`, and `kubectl exec`. These pass through to Claude Code's native handling (uncompressed, with normal permission prompts).
 
+### ACOUSTIC-007: Node.js/pnpm Stack Coverage
+
+The upstream rewrite registry lacked coverage for common Node.js workflows used at Acoustic. Jest commands, `pnpm run` scripts, and `pnpm run lint` were not intercepted by the hook, meaning Claude Code's heaviest output (test runs, builds, lint reports) bypassed RTK entirely.
+
+**What we changed** in `src/discover/rules.rs`:
+- Vitest rule: added `npx jest`, `pnpm jest`, `pnpm test` to rewrite prefixes (routes through `rtk vitest` filter — failures-only output)
+- npm rule: extended pattern from `^npm\s+(run|exec)` to `^(pnpm|npm)\s+(run|exec)`, added `pnpm` to prefixes
+- Lint rule: added `pnpm run lint` to rewrite prefixes
+
+**Impact**: `npx jest --no-cache` (2658 tests, ~25K tokens raw) now compresses to failures-only output (~500 tokens). `pnpm run build` and `pnpm run lint` output is compressed through existing npm/lint filters.
+
 ## Updating from Upstream
 
 ```bash
@@ -72,6 +84,7 @@ git log upstream/master --oneline -20  # Review what changed
 | `src/core/telemetry.rs` | SKIP | We replaced the entire file — skip upstream changes |
 | `src/core/tee.rs` | LOW | Default changed back to enabled? |
 | `src/discover/registry.rs` | LOW | Our ACOUSTIC_EXCLUDE block removed? |
+| `src/discover/rules.rs` | LOW | Our added prefixes removed? New rules conflict with our additions? |
 | `Cargo.toml` | MEDIUM | `ureq` or new HTTP client added? New suspicious deps? |
 
 **Merge strategy**: Cherry-pick specific commits rather than merging master. Review each commit's diff against the files listed above.
@@ -87,3 +100,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Retention | 7 days (was 90) | Enough for `rtk gain` analytics while minimizing exposure window |
 | Tee default | Disabled (was enabled) | Raw output may contain secrets; can be re-enabled per-project if needed |
 | Command exclusions | Hardcoded in registry.rs | Simple, no config to misconfigure; `env`/`curl`/`wget`/`ssh` have no meaningful RTK compression benefit |
+| Registry extensions | Prefix additions in rules.rs | No new patterns — just added missing prefixes for commands RTK already has filters for (jest→vitest, pnpm→npm) |
