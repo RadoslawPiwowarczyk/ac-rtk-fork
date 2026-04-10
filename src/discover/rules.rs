@@ -53,9 +53,9 @@ pub const RULES: &[RtkRule] = &[
         subcmd_status: &[],
     },
     RtkRule {
-        pattern: r"^npm\s+(run|exec)",
+        pattern: r"^(pnpm|npm)\s+(run|exec)",
         rtk_cmd: "rtk npm",
-        rewrite_prefixes: &["npm"],
+        rewrite_prefixes: &["pnpm", "npm"],
         category: "PackageManager",
         savings_pct: 70.0,
         subcmd_savings: &[],
@@ -120,6 +120,7 @@ pub const RULES: &[RtkRule] = &[
         rtk_cmd: "rtk lint",
         rewrite_prefixes: &[
             "npx eslint",
+            "pnpm run lint",
             "pnpm lint",
             "npx biome",
             "eslint",
@@ -152,8 +153,7 @@ pub const RULES: &[RtkRule] = &[
     RtkRule {
         pattern: r"^(pnpm\s+|npx\s+)?(vitest|jest|test)(\s|$)",
         rtk_cmd: "rtk vitest",
-        rewrite_prefixes: &["pnpm vitest", "npx vitest", "vitest", "jest"],
-        category: "Tests",
+        rewrite_prefixes: &["pnpm vitest", "npx vitest", "npx jest", "pnpm jest", "pnpm test", "vitest", "jest"],        category: "Tests",
         savings_pct: 99.0,
         subcmd_savings: &[],
         subcmd_status: &[],
