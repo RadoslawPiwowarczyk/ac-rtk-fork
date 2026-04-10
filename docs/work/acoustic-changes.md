@@ -13,6 +13,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-005 | Disable tee by default, validate RTK_TEE_DIR path | `src/core/tee.rs` | — |
 | ACOUSTIC-006 | Exclude sensitive commands from hook rewriting | `src/discover/registry.rs` | — |
 | ACOUSTIC-007 | Extend rewrite registry for Node.js/pnpm stack | `src/discover/rules.rs` | — |
+| ACOUSTIC-008 | Add yarn, NestJS, Gradle wrappers, extend Maven | `src/discover/rules.rs` | — |
 
 ## Patch Details
 
@@ -65,6 +66,17 @@ The upstream rewrite registry lacked coverage for common Node.js workflows used 
 
 **Impact**: `npx jest --no-cache` (2658 tests, ~25K tokens raw) now compresses to failures-only output (~500 tokens). `pnpm run build` and `pnpm run lint` output is compressed through existing npm/lint filters.
 
+### ACOUSTIC-008: Yarn, NestJS, Gradle/Maven Wrappers
+
+Acoustic projects span multiple ecosystems: React (yarn), NestJS (nest CLI), Java/Flink (Gradle/Maven wrappers). These commands were not intercepted by RTK.
+
+**What we changed** in `src/discover/rules.rs`:
+- npm rule: merged yarn and nest into the existing rule (shared `rtk_cmd: "rtk npm"` requires single-rule approach to avoid lookup collision). Pattern now covers `yarn run/exec/test/build/lint/install/add/remove` and `nest build/start/test` with npx/pnpm prefixes.
+- mvn rule: extended pattern to include `test`, `verify`, `generate-sources`, `versions:*` subcommands. Added `./mvnw` and `mvnw` wrapper prefixes.
+- gradle rule (new): added `./gradlew`, `gradlew`, `gradle` with subcommands `build/test/clean/check/assemble/spotlessCheck/spotlessApply/jacocoTestReport`.
+
+**Note**: `rtk gradle` and `rtk mvn` are transparent proxies (no dedicated filter module). Commands execute correctly and token usage is tracked, but output is not yet compressed. Future filter modules can add compression without changing rules.
+
 ## Updating from Upstream
 
 ```bash
@@ -101,3 +113,5 @@ git log upstream/master --oneline -20  # Review what changed
 | Tee default | Disabled (was enabled) | Raw output may contain secrets; can be re-enabled per-project if needed |
 | Command exclusions | Hardcoded in registry.rs | Simple, no config to misconfigure; `env`/`curl`/`wget`/`ssh` have no meaningful RTK compression benefit |
 | Registry extensions | Prefix additions in rules.rs | No new patterns — just added missing prefixes for commands RTK already has filters for (jest→vitest, pnpm→npm) |
+| Yarn/Nest merge | Single npm rule with combined pattern | Multiple rules sharing same `rtk_cmd` causes lookup collision — must be one rule |
+| Gradle/Maven wrappers | Prefix-only (no filter module) | Transparent proxy with tracking is still valuable; filter can be added later |

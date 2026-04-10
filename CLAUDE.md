@@ -22,6 +22,18 @@ rtk gain       # Should show token savings stats (NOT "command not found")
 
 If `rtk gain` fails, you have the wrong package installed.
 
+## Shell Preferences (RTK Token Compression)
+
+Claude Code should prefer Bash commands over built-in tools to enable RTK output compression:
+
+- Use `cat`, `head -N`, `tail -N` to read files instead of the Read tool
+- Use `grep -rn` or `rg` to search code instead of the Grep tool
+- Use `find` or `ls` to list files instead of the Glob tool
+- Use `wc -l` to count lines instead of reading entire files
+
+This routes all operations through RTK's PreToolUse hook, reducing token consumption by 60-90% on command output. RTK is installed globally — no project setup needed.
+
+
 ## Development Commands
 
 > **Note**: If rtk is installed, prefer `rtk <cmd>` over raw commands for token-optimized output.
