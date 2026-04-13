@@ -100,15 +100,21 @@ Upstream RTK v0.35.0 ships with the `--level` Clap argument defaulting to `"none
 
 ### ACOUSTIC-011: Route Test Commands to Generic Test Filter
 
-The general npm/pnpm/yarn rule (`rtk npm`) catches `pnpm test` and `npm test` before any test-specific rule can match. `rtk npm` is a passthrough with ~0% compression. The generic test filter (`rtk test`) shows failures only with 90-97% compression. Team member benchmarking showed 0.3% savings on `rtk npm test` vs 97.1% on `rtk test`.
+The general npm/pnpm/yarn rule (`rtk npm`) catches `pnpm test` and `npm test` as a passthrough with ~0% compression. The generic test filter (`rtk test`) shows failures only with 90-97% compression. Team member benchmarking showed 0.3% savings on `rtk npm test` vs 97.1% on `rtk test`.
 
 **What we changed** in `src/discover/rules.rs`:
-- Added two rules AFTER the general npm rule (RTK's RegexSet uses last-match-wins, not first-match-wins — discovered during debugging)
-- `pnpm test` / `npm test` / `yarn test` → `rtk test` (failures-only filter)
-- `npx jest` / `pnpm jest` → `rtk test` (failures-only filter)
+- Added five rules AFTER the general npm and npx rules (RTK's RegexSet uses last-match-wins — specific overrides must have higher array index than the catch-all)
+- `pnpm test` → `rtk test pnpm test` (failures-only filter)
+- `npm test` → `rtk test npm test` (failures-only filter)
+- `yarn test` → `rtk test yarn test` (failures-only filter)
+- `npx jest` → `rtk test npx jest` (failures-only filter)
+- `pnpm jest` → `rtk test pnpm jest` (failures-only filter)
 - All other npm/pnpm commands (`pnpm run build`, `npm install`, etc.) still route to `rtk npm` unchanged
 
-**Key discovery**: RTK's `classify_command()` uses `REGEX_SET.matches(cmd).last()` — when multiple patterns match, the highest-index rule wins. Rules must be ordered with the general catch-all FIRST and specific overrides AFTER. This is the opposite of typical regex/route matching conventions.
+**Key discoveries during implementation**:
+1. RegexSet `matches().last()` means highest-index rule wins — the opposite of typical route matching conventions
+2. `rtk test` is a wrapper expecting the full command as arguments — `rtk_cmd` must be `"rtk test pnpm"` (not `"rtk test"`), with `rewrite_prefixes: &["pnpm"]`, so `pnpm test` strips `pnpm` and produces `rtk test pnpm test`
+3. Each package manager needs its own rule because `rtk_cmd` must embed the runner name
 
 ## Updating from Upstream
 
@@ -150,4 +156,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Yarn/Nest merge | Single npm rule with combined pattern | Multiple rules sharing same `rtk_cmd` causes lookup collision — must be one rule |
 | Gradle/Maven wrappers | Prefix-only (no filter module) | Transparent proxy with tracking is still valuable; filter can be added later |
 | Read filter default | `minimal` (was `none`) | Upstream bug: docs say minimal, binary ships none. 41.8% efficiency gain with zero functional impact on Claude's ability to read/edit code |
-| Test command routing | Separate rules after npm rule (last-match-wins) | RegexSet picks highest index; specific test rules must come after the general npm catch-all to override it |
+| Test command routing | Separate rules per runner, rtk_cmd embeds runner name (last-match-wins) | RegexSet picks highest index; `rtk test` wrapper needs full command as args, so rtk_cmd must be `"rtk test pnpm"` not `"rtk test"` |

@@ -61,23 +61,42 @@ pub const RULES: &[RtkRule] = &[
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    // ACOUSTIC-011: Route npm/pnpm/yarn test commands to the generic test filter
-    // (failures-only, 90%+ savings) instead of rtk npm (passthrough, ~0% savings).
-    // Must appear BEFORE the general npm/pnpm/yarn rule to win pattern priority.
+    // ACOUSTIC-011: Route test commands to generic test filter (failures-only, 90%+).
+    // Must appear AFTER the general npm rule — RegexSet uses last-match-wins.
+    // Each package manager needs its own rule because rtk_cmd must include the
+    // runner name: "rtk test pnpm" so that "pnpm test" rewrites to "rtk test pnpm test"
+    // (rtk test expects the full test command as its argument).
     RtkRule {
-        pattern: r"^(pnpm|npm|yarn)\s+test\b",
-        rtk_cmd: "rtk test",
-        rewrite_prefixes: &["pnpm test", "npm test", "yarn test"],
+        pattern: r"^pnpm\s+test\b",
+        rtk_cmd: "rtk test pnpm",
+        rewrite_prefixes: &["pnpm"],
         category: "Tests",
         savings_pct: 90.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
-    // ACOUSTIC-011: Route jest invocations to generic test filter
     RtkRule {
-        pattern: r"^(npx|pnpm)\s+jest\b",
-        rtk_cmd: "rtk test",
-        rewrite_prefixes: &["npx jest", "pnpm jest"],
+        pattern: r"^npm\s+test\b",
+        rtk_cmd: "rtk test npm",
+        rewrite_prefixes: &["npm"],
+        category: "Tests",
+        savings_pct: 90.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
+    RtkRule {
+        pattern: r"^yarn\s+test\b",
+        rtk_cmd: "rtk test yarn",
+        rewrite_prefixes: &["yarn"],
+        category: "Tests",
+        savings_pct: 90.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
+    RtkRule {
+        pattern: r"^pnpm\s+jest\b",
+        rtk_cmd: "rtk test pnpm",
+        rewrite_prefixes: &["pnpm"],
         category: "Tests",
         savings_pct: 90.0,
         subcmd_savings: &[],
@@ -89,6 +108,15 @@ pub const RULES: &[RtkRule] = &[
         rewrite_prefixes: &["npx"],
         category: "PackageManager",
         savings_pct: 70.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
+    RtkRule {
+        pattern: r"^npx\s+jest\b",
+        rtk_cmd: "rtk test npx",
+        rewrite_prefixes: &["npx"],
+        category: "Tests",
+        savings_pct: 90.0,
         subcmd_savings: &[],
         subcmd_status: &[],
     },
