@@ -22,9 +22,9 @@ rtk gain       # Should show token savings stats (NOT "command not found")
 
 If `rtk gain` fails, you have the wrong package installed.
 
-## Shell Preferences (RTK Token Compression)
+## Shell Obligatory use (RTK Token Compression)
 
-Claude Code should prefer Bash commands over built-in tools to enable RTK output compression:
+Claude Code have to use Bash commands over built-in tools to enable RTK output compression:
 
 - Use `cat`, `head -N`, `tail -N` to read files instead of the Read tool
 - Use `grep -rn` or `rg` to search code instead of the Grep tool
