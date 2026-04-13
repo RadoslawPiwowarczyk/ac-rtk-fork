@@ -15,6 +15,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-007 | Extend rewrite registry for Node.js/pnpm stack | `src/discover/rules.rs` | — |
 | ACOUSTIC-008 | Add yarn, NestJS, Gradle wrappers, extend Maven | `src/discover/rules.rs` | — |
 | ACOUSTIC-010 | Fix `rtk read` default filter: `none` → `minimal` | `src/main.rs` | — |
+| ACOUSTIC-011 | Route test commands to generic test filter | `src/discover/rules.rs` | — |
 
 ## Patch Details
 
@@ -97,6 +98,18 @@ Upstream RTK v0.35.0 ships with the `--level` Clap argument defaulting to `"none
 
 **Verification**: `rtk read <file> -v` now shows `(filter: minimal)` instead of `(filter: none)`.
 
+### ACOUSTIC-011: Route Test Commands to Generic Test Filter
+
+The general npm/pnpm/yarn rule (`rtk npm`) catches `pnpm test` and `npm test` before any test-specific rule can match. `rtk npm` is a passthrough with ~0% compression. The generic test filter (`rtk test`) shows failures only with 90-97% compression. Team member benchmarking showed 0.3% savings on `rtk npm test` vs 97.1% on `rtk test`.
+
+**What we changed** in `src/discover/rules.rs`:
+- Added two rules AFTER the general npm rule (RTK's RegexSet uses last-match-wins, not first-match-wins — discovered during debugging)
+- `pnpm test` / `npm test` / `yarn test` → `rtk test` (failures-only filter)
+- `npx jest` / `pnpm jest` → `rtk test` (failures-only filter)
+- All other npm/pnpm commands (`pnpm run build`, `npm install`, etc.) still route to `rtk npm` unchanged
+
+**Key discovery**: RTK's `classify_command()` uses `REGEX_SET.matches(cmd).last()` — when multiple patterns match, the highest-index rule wins. Rules must be ordered with the general catch-all FIRST and specific overrides AFTER. This is the opposite of typical regex/route matching conventions.
+
 ## Updating from Upstream
 
 ```bash
@@ -137,3 +150,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Yarn/Nest merge | Single npm rule with combined pattern | Multiple rules sharing same `rtk_cmd` causes lookup collision — must be one rule |
 | Gradle/Maven wrappers | Prefix-only (no filter module) | Transparent proxy with tracking is still valuable; filter can be added later |
 | Read filter default | `minimal` (was `none`) | Upstream bug: docs say minimal, binary ships none. 41.8% efficiency gain with zero functional impact on Claude's ability to read/edit code |
+| Test command routing | Separate rules after npm rule (last-match-wins) | RegexSet picks highest index; specific test rules must come after the general npm catch-all to override it |
