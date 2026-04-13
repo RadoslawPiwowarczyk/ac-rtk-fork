@@ -33,6 +33,7 @@ Claude wants to read file.java
 **CLAUDE.md instructions alone are unreliable** — Claude sometimes ignores them and uses built-in tools anyway. The hook approach is deterministic.
 
 ## Step 1: Install the Acoustic RTK Binary
+**Important**: After any `cargo build --release` (e.g., pulling new patches), you must re-run `cp ./target/release/rtk ~/.local/bin/rtk` to install the updated binary. Building alone does not update the installed copy.
 
 ```bash
 cd /path/to/ac-rtk-fork
