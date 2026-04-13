@@ -61,6 +61,28 @@ pub const RULES: &[RtkRule] = &[
         subcmd_savings: &[],
         subcmd_status: &[],
     },
+    // ACOUSTIC-011: Route npm/pnpm/yarn test commands to the generic test filter
+    // (failures-only, 90%+ savings) instead of rtk npm (passthrough, ~0% savings).
+    // Must appear BEFORE the general npm/pnpm/yarn rule to win pattern priority.
+    RtkRule {
+        pattern: r"^(pnpm|npm|yarn)\s+test\b",
+        rtk_cmd: "rtk test",
+        rewrite_prefixes: &["pnpm test", "npm test", "yarn test"],
+        category: "Tests",
+        savings_pct: 90.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
+    // ACOUSTIC-011: Route jest invocations to generic test filter
+    RtkRule {
+        pattern: r"^(npx|pnpm)\s+jest\b",
+        rtk_cmd: "rtk test",
+        rewrite_prefixes: &["npx jest", "pnpm jest"],
+        category: "Tests",
+        savings_pct: 90.0,
+        subcmd_savings: &[],
+        subcmd_status: &[],
+    },
     RtkRule {
         pattern: r"^npx\s+",
         rtk_cmd: "rtk npx",
