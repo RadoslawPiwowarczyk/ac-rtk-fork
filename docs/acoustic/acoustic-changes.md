@@ -16,7 +16,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-008 | Add yarn, NestJS, Gradle wrappers, extend Maven | `src/discover/rules.rs` | — |
 | ACOUSTIC-010 | Fix `rtk read` default filter: `none` → `minimal` | `src/main.rs` | — |
 | ACOUSTIC-011 | Route test commands to generic test filter | `src/discover/rules.rs` | — |
-
+| ACOUSTIC-012 | Capture jest failure details in test filter | `src/cmds/rust/runner.rs` | — |
 ## Patch Details
 
 ### ACOUSTIC-001: Telemetry Stripped
@@ -116,6 +116,18 @@ The general npm/pnpm/yarn rule (`rtk npm`) catches `pnpm test` and `npm test` as
 2. `rtk test` is a wrapper expecting the full command as arguments — `rtk_cmd` must be `"rtk test pnpm"` (not `"rtk test"`), with `rewrite_prefixes: &["pnpm"]`, so `pnpm test` strips `pnpm` and produces `rtk test pnpm test`
 3. Each package manager needs its own rule because `rtk_cmd` must embed the runner name
 
+### ACOUSTIC-012: Capture Jest Failure Details in Test Filter
+
+The `extract_test_summary` function in `runner.rs` only captured `FAIL` file headers and summary lines for jest output. Assertion diffs, test names, code context, and stack traces were stripped. When a test failed, Claude received only `FAIL src/test/file.test.ts` with no diagnostic information, forcing 6+ extra tool calls (re-read test file, re-read source, re-run with verbose, etc.) to diagnose the failure.
+
+**What we changed** in `src/cmds/rust/runner.rs`:
+- Added `pnpm test` to the jest command detection (was missing, only matched `jest`, `npm test`, `yarn test`)
+- Jest failure blocks starting with `●` (test name) are now captured along with their indented body (assertion diff, source lines, stack trace)
+- Failure detail lines capped at 50 to prevent output explosion when many tests fail
+- Passing test output is unchanged — still summary-only
+
+**Before (old filter output on failure):**
+
 ## Updating from Upstream
 
 ```bash
@@ -157,3 +169,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Gradle/Maven wrappers | Prefix-only (no filter module) | Transparent proxy with tracking is still valuable; filter can be added later |
 | Read filter default | `minimal` (was `none`) | Upstream bug: docs say minimal, binary ships none. 41.8% efficiency gain with zero functional impact on Claude's ability to read/edit code |
 | Test command routing | Separate rules per runner, rtk_cmd embeds runner name (last-match-wins) | RegexSet picks highest index; `rtk test` wrapper needs full command as args, so rtk_cmd must be `"rtk test pnpm"` not `"rtk test"` |
+| Jest failure detail | Capture ● blocks with 50-line cap | 97% compression on failures is counterproductive — Claude spends more tokens re-reading files than it saves. 90% with diagnostic info is net cheaper. |
