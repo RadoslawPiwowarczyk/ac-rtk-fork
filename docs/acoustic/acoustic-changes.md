@@ -17,6 +17,7 @@ Based on upstream [rtk-ai/rtk](https://github.com/rtk-ai/rtk) v0.35.0 (commit `8
 | ACOUSTIC-010 | Fix `rtk read` default filter: `none` → `minimal` | `src/main.rs` | — |
 | ACOUSTIC-011 | Route test commands to generic test filter | `src/discover/rules.rs` | — |
 | ACOUSTIC-012 | Capture jest failure details in test filter | `src/cmds/rust/runner.rs` | — |
+| ACOUSTIC-013 | Bypass test filter for diagnostic flags | `src/cmds/rust/runner.rs` | — |
 ## Patch Details
 
 ### ACOUSTIC-001: Telemetry Stripped
@@ -128,6 +129,17 @@ The `extract_test_summary` function in `runner.rs` only captured `FAIL` file hea
 
 **Before (old filter output on failure):**
 
+### ACOUSTIC-013: Bypass Test Filter for Diagnostic Flags
+
+ACOUSTIC-011 routes `npx jest` and `pnpm jest` to the test filter. But diagnostic invocations like `npx jest --listTests` or `pnpm jest --showConfig` are not test executions — their output is structured data (file lists, configuration JSON) that the test filter corrupts. In a real session, Claude received only 6 of 27 test files from `--listTests` because the filter stripped most of the output, causing several wasted tool calls to debug a Jest cache issue.
+
+**What we changed** in `src/cmds/rust/runner.rs`:
+- Added `DIAGNOSTIC_FLAGS` constant: `--listTests`, `--showConfig`, `--help`, `--version`, `-h`, `-V`
+- At the top of `run_test()`, if any arg matches a diagnostic flag, the command runs via `run_passthrough()` — full unfiltered output, still tracked in `rtk gain`
+- Normal test runs are unaffected
+
+**Impact**: `rtk test npx jest --listTests` now returns all 27 test files instead of 6. Zero extra tool calls needed to resolve test discovery issues.
+
 ## Updating from Upstream
 
 ```bash
@@ -170,3 +182,4 @@ git log upstream/master --oneline -20  # Review what changed
 | Read filter default | `minimal` (was `none`) | Upstream bug: docs say minimal, binary ships none. 41.8% efficiency gain with zero functional impact on Claude's ability to read/edit code |
 | Test command routing | Separate rules per runner, rtk_cmd embeds runner name (last-match-wins) | RegexSet picks highest index; `rtk test` wrapper needs full command as args, so rtk_cmd must be `"rtk test pnpm"` not `"rtk test"` |
 | Jest failure detail | Capture ● blocks with 50-line cap | 97% compression on failures is counterproductive — Claude spends more tokens re-reading files than it saves. 90% with diagnostic info is net cheaper. |
+| Diagnostic flag bypass | Passthrough in runner.rs, not rules.rs | Rules only match command prefixes — can't inspect deep flags. The filter function is the right place to decide whether to compress. |

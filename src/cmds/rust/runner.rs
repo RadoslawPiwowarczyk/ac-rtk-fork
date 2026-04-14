@@ -65,9 +65,24 @@ pub fn run_err(args: &[String], verbose: u8) -> Result<i32> {
     Ok(exit_code)
 }
 
+/// Flags that indicate a diagnostic/info invocation, not a test execution.
+const DIAGNOSTIC_FLAGS: &[&str] = &[
+    "--listTests",
+    "--showConfig",
+    "--help",
+    "--version",
+    "-h",
+    "-V",
+];
+
 /// Run tests and show only failures.
 /// Takes args as a slice — no shell involved.
 pub fn run_test(args: &[String], verbose: u8) -> Result<i32> {
+    // ACOUSTIC-013: Diagnostic flags bypass test filter — run unfiltered
+    if args.iter().any(|a| DIAGNOSTIC_FLAGS.contains(&a.as_str())) {
+        return run_passthrough(args, verbose, "test");
+    }
+
     let timer = tracking::TimedExecution::start();
     let display_cmd = args.join(" ");
 
@@ -267,6 +282,43 @@ fn extract_test_summary(output: &str, command: &str) -> String {
         }
     }
     output
+}
+
+// Run a command as a transparent proxy — no filtering, just tracking.
+fn run_passthrough(args: &[String], verbose: u8, label: &str) -> Result<i32> {
+    let timer = tracking::TimedExecution::start();
+    let display_cmd = args.join(" ");
+
+    if verbose > 0 {
+        eprintln!("Running (passthrough): {}", display_cmd);
+    }
+
+    if let Err(msg) = sanitize::validate_args(args) {
+        eprintln!("[rtk {}] {}", label, msg);
+        return Ok(1);
+    }
+
+    let (bin, rest) = args.split_first().unwrap();
+
+    let output = Command::new(bin)
+        .args(rest)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .with_context(|| format!("Failed to execute: {}", bin))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let raw = format!("{}\n{}", stdout, stderr);
+
+    let exit_code = crate::core::utils::exit_code_from_output(&output, label);
+    if let Some(hint) = crate::core::tee::tee_and_hint(&raw, label, exit_code) {
+        println!("{}\n{}", raw.trim(), hint);
+    } else {
+        println!("{}", raw.trim());
+    }
+    timer.track(&display_cmd, &format!("rtk run-{}-passthrough", label), &raw, &raw);
+    Ok(exit_code)
 }
 
 #[cfg(test)]
