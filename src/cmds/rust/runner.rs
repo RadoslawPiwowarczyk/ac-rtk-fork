@@ -166,17 +166,15 @@ fn filter_errors(output: &str) -> String {
 fn extract_test_summary(output: &str, command: &str) -> String {
     let mut result = Vec::new();
     let lines: Vec<&str> = output.lines().collect();
-
     let is_cargo = command.contains("cargo test");
     let is_pytest = command.contains("pytest");
     let is_jest =
-        command.contains("jest") || command.contains("npm test") || command.contains("yarn test");
+        command.contains("jest") || command.contains("npm test") || command.contains("yarn test")
+            || command.contains("pnpm test");
     let is_go = command.contains("go test");
-
     let mut failures = Vec::new();
     let mut in_failure = false;
     let mut failure_lines = Vec::new();
-
     for line in lines.iter() {
         if is_cargo {
             if line.contains("test result:") {
@@ -192,7 +190,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
                 failure_lines.push(line.to_string());
             }
         }
-
         if is_pytest {
             if line.contains(" passed") || line.contains(" failed") || line.contains(" error") {
                 result.push(line.to_string());
@@ -201,16 +198,27 @@ fn extract_test_summary(output: &str, command: &str) -> String {
                 failures.push(line.to_string());
             }
         }
-
         if is_jest {
             if line.contains("Tests:") || line.contains("Test Suites:") {
                 result.push(line.to_string());
             }
-            if line.contains("✕") || line.contains("FAIL") {
+            // FAIL file header
+            if line.contains("FAIL") && !line.contains("Test Suites:") {
                 failures.push(line.to_string());
             }
+            // ACOUSTIC-012: Capture jest failure detail blocks
+            // Jest outputs: "  ● Suite Name › test name" then indented diff/stack
+            if line.trim_start().starts_with("●") {
+                in_failure = true;
+                failure_lines.push(line.to_string());
+            } else if in_failure {
+                if line.starts_with("    ") || line.starts_with("\t") || line.trim().is_empty() {
+                    failure_lines.push(line.to_string());
+                } else {
+                    in_failure = false;
+                }
+            }
         }
-
         if is_go {
             if line.starts_with("ok") || line.starts_with("FAIL") || line.starts_with("---") {
                 result.push(line.to_string());
@@ -220,9 +228,7 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             }
         }
     }
-
     let mut output = String::new();
-
     if !failures.is_empty() {
         output.push_str("[FAIL] FAILURES:\n");
         for f in failures.iter().take(10) {
@@ -231,9 +237,21 @@ fn extract_test_summary(output: &str, command: &str) -> String {
         if failures.len() > 10 {
             output.push_str(&format!("  ... +{} more failures\n", failures.len() - 10));
         }
+        // ACOUSTIC-012: Append failure details (assertion diffs, stack traces)
+        if !failure_lines.is_empty() {
+            output.push('\n');
+            for line in failure_lines.iter().take(50) {
+                output.push_str(&format!("{}\n", line));
+            }
+            if failure_lines.len() > 50 {
+                output.push_str(&format!(
+                    "  ... +{} more detail lines truncated\n",
+                    failure_lines.len() - 50
+                ));
+            }
+        }
         output.push('\n');
     }
-
     if !result.is_empty() {
         output.push_str("SUMMARY:\n");
         for r in &result {
@@ -248,7 +266,6 @@ fn extract_test_summary(output: &str, command: &str) -> String {
             }
         }
     }
-
     output
 }
 
